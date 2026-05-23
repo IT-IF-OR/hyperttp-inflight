@@ -1,1 +1,1 @@
-export { withInflight, InflightPlugin } from "./plugin.js";
+export { withInflight } from "./plugin.js";

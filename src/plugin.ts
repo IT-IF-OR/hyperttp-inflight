@@ -1,39 +1,84 @@
 import type {
-  HyperCore,
   HyperPlugin,
   InternalRequest,
   HttpClientOptions,
+  HttpResponse,
 } from "@hyperttp/core";
 
-export function withInflight(client: HyperCore): HyperCore {
-  const inflight = new Map<string, Promise<unknown>>();
-  const next = client.dispatch.bind(client);
-
-  client.dispatch = async <T = any>(req: InternalRequest): Promise<T> => {
-    if (!req.isGet || req.meta?.skipInflight) return next(req) as T;
-
-    const urlString = typeof req.url === "string" ? req.url : req.url.getURL();
-    if (inflight.has(urlString)) return inflight.get(urlString)! as T;
-
-    const promise = next(req).finally(() => {
-      inflight.delete(urlString);
-    });
-
-    inflight.set(urlString, promise);
-    return promise as T;
+export interface InflightRequest extends InternalRequest {
+  meta?: InternalRequest["meta"] & {
+    skipInflight?: boolean;
   };
-  return client;
 }
 
 declare module "@hyperttp/core" {
   interface HyperttpPluginsExtension {
-    inflight?: { enabled: boolean };
+    inflight?: { enabled?: boolean };
+    skipInflight?: boolean;
   }
 }
 
-export const InflightPlugin: HyperPlugin = {
-  name: "hyperttp-inflight",
-  phase: "PREPARE",
-  enabled: (config: HttpClientOptions) => config.inflight?.enabled !== false,
-  apply: (client: HyperCore) => withInflight(client),
-};
+export function withInflight(): HyperPlugin {
+  const inflight = new Map<string, Promise<HttpResponse<any>>>();
+
+  return {
+    name: "hyperttp-inflight",
+    phase: "PREPARE",
+    enabled: (config: HttpClientOptions) => config.inflight?.enabled !== false,
+
+    wrapDispatch: (next) => {
+      return async <T>(req: InternalRequest): Promise<HttpResponse<T>> => {
+        const inflightReq = req as InflightRequest;
+
+        if (inflightReq.method !== "GET" || inflightReq.meta?.skipInflight) {
+          return next<T>(req);
+        }
+
+        const urlKey = inflightReq.url;
+
+        if (inflight.has(urlKey)) {
+          const sharedPromise = inflight.get(urlKey) as Promise<
+            HttpResponse<T>
+          >;
+
+          if (inflightReq.signal) {
+            if (inflightReq.signal.aborted) {
+              throw new DOMException(
+                "The user aborted a request.",
+                "AbortError",
+              );
+            }
+
+            return new Promise<HttpResponse<T>>((resolve, reject) => {
+              const onAbort = () =>
+                reject(
+                  new DOMException("The user aborted a request.", "AbortError"),
+                );
+              inflightReq.signal!.addEventListener("abort", onAbort);
+
+              sharedPromise.then(
+                (res) => {
+                  inflightReq.signal!.removeEventListener("abort", onAbort);
+                  resolve(res);
+                },
+                (err) => {
+                  inflightReq.signal!.removeEventListener("abort", onAbort);
+                  reject(err);
+                },
+              );
+            });
+          }
+
+          return sharedPromise;
+        }
+
+        const promise = next<T>(inflightReq).finally(() => {
+          inflight.delete(urlKey);
+        });
+
+        inflight.set(urlKey, promise);
+        return promise;
+      };
+    },
+  };
+}

@@ -1,6 +1,6 @@
 {
   "name": "@hyperttp/inflight",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Request collapsing and de-duplication plugin for Hyperttp client",
   "type": "module",
   "main": "./dist/index.js",
@@ -15,10 +15,12 @@
     "url": "git+https://github.com/IT-IF-OR/hyperttp-inflight.git"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^5",
+    "@hyperttp/core": "^1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@dirold2/dev-tools": "^1.0.12",
     "globals": "^17.6.0",
     "typescript-eslint": "^8.59.4",
     "@types/bun": "latest",
@@ -30,14 +32,15 @@
     "jiti": "^2.7.0"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && d-build",
+    "dist": "d-dist",
+    "deploy": "npm run build && npm run dist",
+    "publish": "d-publish",
     "typecheck": "tsc --noEmit",
     "lint": "eslint 'src/**/*.{ts,js}'",
     "format": "prettier --write .",
     "test": "vitest run",
-    "dev": "tsx src/index.ts"
-  },
-  "dependencies": {
-    "@hyperttp/core": "^1.0.5"
+    "dev": "tsx src/index.ts",
+    "prepublishOnly": "npm run build"
   }
 }
