@@ -12,10 +12,19 @@ export interface InflightRequest extends InternalRequest {
 }
 
 declare module "@hyperttp/core" {
-  interface HyperttpPluginsExtension {
+  interface HttpClientOptions {
     inflight?: { enabled?: boolean };
+  }
+  interface HyperttpPluginsExtension {
     skipInflight?: boolean;
   }
+}
+
+function cloneResponse<T>(res: HttpResponse<T>): HttpResponse<T> {
+  return {
+    ...res,
+    headers: { ...res.headers },
+  };
 }
 
 export function withInflight(): HyperPlugin {
@@ -27,56 +36,75 @@ export function withInflight(): HyperPlugin {
     enabled: (config: HttpClientOptions) => config.inflight?.enabled !== false,
 
     wrapDispatch: (next) => {
-      return async <T>(req: InternalRequest): Promise<HttpResponse<T>> => {
+      return <T>(req: InternalRequest): Promise<HttpResponse<T>> => {
         const inflightReq = req as InflightRequest;
 
         if (inflightReq.method !== "GET" || inflightReq.meta?.skipInflight) {
           return next<T>(req);
         }
 
-        const urlKey = inflightReq.url;
+        const cacheKey = inflightReq.url;
+        const sharedPromise = inflight.get(cacheKey) as
+          | Promise<HttpResponse<T>>
+          | undefined;
 
-        if (inflight.has(urlKey)) {
-          const sharedPromise = inflight.get(urlKey) as Promise<
-            HttpResponse<T>
-          >;
+        if (sharedPromise !== undefined) {
+          const signal = inflightReq.signal;
 
-          if (inflightReq.signal) {
-            if (inflightReq.signal.aborted) {
-              throw new DOMException(
-                "The user aborted a request.",
-                "AbortError",
-              );
-            }
+          if (signal?.aborted) {
+            return Promise.reject(
+              new DOMException("The user aborted a request.", "AbortError"),
+            );
+          }
 
+          if (signal) {
             return new Promise<HttpResponse<T>>((resolve, reject) => {
-              const onAbort = () =>
+              let clean = false;
+
+              const onAbort = () => {
+                if (clean) return;
+                clean = true;
                 reject(
                   new DOMException("The user aborted a request.", "AbortError"),
                 );
-              inflightReq.signal!.addEventListener("abort", onAbort);
+              };
+
+              signal.addEventListener("abort", onAbort);
 
               sharedPromise.then(
                 (res) => {
-                  inflightReq.signal!.removeEventListener("abort", onAbort);
-                  resolve(res);
+                  if (!clean) {
+                    clean = true;
+                    signal.removeEventListener("abort", onAbort);
+                    resolve(cloneResponse(res));
+                  }
                 },
                 (err) => {
-                  inflightReq.signal!.removeEventListener("abort", onAbort);
-                  reject(err);
+                  if (!clean) {
+                    clean = true;
+                    signal.removeEventListener("abort", onAbort);
+                    reject(err);
+                  }
                 },
               );
             });
           }
 
-          return sharedPromise;
+          return sharedPromise.then(cloneResponse);
         }
 
-        const promise = next<T>(inflightReq).finally(() => {
-          inflight.delete(urlKey);
-        });
+        const promise = next<T>(inflightReq).then(
+          (res) => {
+            inflight.delete(cacheKey);
+            return res;
+          },
+          (err) => {
+            inflight.delete(cacheKey);
+            throw err;
+          },
+        );
 
-        inflight.set(urlKey, promise);
+        inflight.set(cacheKey, promise);
         return promise;
       };
     },
