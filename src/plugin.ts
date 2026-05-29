@@ -7,76 +7,108 @@ import type {
 } from "@hyperttp/types";
 
 /**
- * @ru Расширенный интерфейс запроса с поддержкой мета-флагов дедупликации.
- * @en Extended request interface supporting de-duplication meta flags.
+ * @en Extended internal request interface with inflight-specific metadata.
+ * @ru Расширенный интерфейс внутреннего запроса с метаданными, специфичными для inflight.
  */
 export interface InflightRequest extends InternalRequest {
+  /**
+   * @en Metadata including the option to skip inflight deduplication.
+   * @ru Метаданные, включая опцию пропуска дедупликации inflight.
+   */
   meta?: InternalRequest["meta"] & {
+    /**
+     * @en If true, bypasses the inflight deduplication logic for this request.
+     * @ru Если true, обходит логику дедупликации inflight для этого запроса.
+     */
     skipInflight?: boolean;
   };
 }
 
+/**
+ * @en Extends HttpClientOptions to include inflight deduplication configuration.
+ * @ru Расширяет HttpClientOptions, добавляя конфигурацию дедупликации inflight.
+ */
 declare module "@hyperttp/types" {
   interface HttpClientOptions {
+    /**
+     * @en Configuration for the inflight deduplication plugin.
+     * @ru Конфигурация для плагина дедупликации inflight.
+     */
     inflight?: { enabled?: boolean };
-  }
-  interface HyperttpPluginsExtension {
-    skipInflight?: boolean;
   }
 }
 
+/**
+ * @en Structure representing a pending in-flight request promise and its resolvers.
+ * @ru Структура, представляющая ожидающее выполнение обещание запроса и его разрешающие функции.
+ */
 interface InflightEntry {
+  /**
+   * @en The promise representing the in-flight request.
+   * @ru Обещание, представляющее выполняющийся запрос.
+   */
   promise: Promise<HttpResponse<any>>;
+
+  /**
+   * @en Resolver function for the promise.
+   * @ru Функция разрешения обещания.
+   */
   resolve: (res: HttpResponse<any>) => void;
+
+  /**
+   * @en Rejection function for the promise.
+   * @ru Функция отклонения обещания.
+   */
   reject: (err: any) => void;
+
+  /**
+   * @en The URL key used for deduplication.
+   * @ru Ключ URL, используемый для дедупликации.
+   */
   url: string;
 }
 
 /**
- * @private
- * @ru Поверхностно клонирует объект ответа для безопасного распределения между независимыми подписчиками.
- * @en Shallow clones the response object for safe distribution among independent subscribers.
- * @param res - Target HTTP response to clone.
- * @returns Cloned response instance.
- */
-function cloneResponse<T>(res: HttpResponse<T>): HttpResponse<T> {
-  return {
-    ...res,
-    headers: { ...res.headers },
-  };
-}
-
-/**
- * @ru Плагин дедупликации одновременно выполняющихся GET-запросов (Inflight Request Pooling).
- * @en Concurrent identical GET request de-duplication plugin (Inflight Request Pooling).
- * @returns HyperPlugin object instance.
+ * @en Creates a plugin for deduplicating concurrent identical GET requests (inflight caching).
+ * Prevents multiple simultaneous requests to the same URL by sharing the same promise.
+ * @ru Создает плагин для дедупликации одновременных идентичных GET-запросов (inflight кэширование).
+ * Предотвращает множественные одновременные запросы к одному URL, разделяя одно и то же обещание.
+ * @returns The configured HyperPlugin instance.
  */
 export function withInflight(): HyperPlugin {
-  /**
-   * @ru Карта активных сетевых полетов, проиндексированная по URL запроса.
-   * @en Map of active network flights indexed by request URL.
-   */
   const inflight = new Map<string, InflightEntry>();
+  const primaryFlights = new WeakMap<InternalRequest, InflightEntry>();
 
   /**
-   * @ru Карта связи первичных запросов с их управляющими триггерами обещаний.
-   * @en Map linking primary requests to their controlling promise triggers.
+   * @en Safely clones the response if possible, otherwise creates a shallow copy.
+   * @ru Безопасно клонирует ответ, если возможно, иначе создает поверхностную копию.
+   * @template T - Type of the response body.
+   * @param res - The response to clone.
+   * @returns A cloned or copied response object.
    */
-  const primaryFlights = new WeakMap<InternalRequest, InflightEntry>();
+  const safeClone = <T>(res: HttpResponse<T>): HttpResponse<T> => {
+    return typeof res.clone === "function"
+      ? res.clone()
+      : { ...res, headers: { ...res.headers } };
+  };
 
   return {
     name: "hyperttp-inflight",
 
     /**
-     * @ru Проверяет активацию плагина. По умолчанию включен, если явным образом не передано `enabled: false`.
-     * @en Evaluates plugin activation. Enabled by default unless explicitly set to `enabled: false`.
+     * @en Predicate to check if the inflight plugin is enabled. Enabled by default.
+     * @ru Предикат для проверки включен ли плагин inflight. Включен по умолчанию.
+     * @param config - The current client configuration.
+     * @returns True if inflight deduplication is not explicitly disabled.
      */
     enabled: (config: HttpClientOptions): boolean =>
       config.inflight?.enabled !== false,
 
     /**
-     * @ru Перехватывает запрос. Если аналогичный GET уже выполняется, возвращает управляемый Promise для склейки.
-     * @en Intercepts the request. If a matching GET is running, returns a managed Promise to share the flight.
+     * @en Intercepts outgoing requests to check for existing in-flight duplicates.
+     * @ru Перехватывает исходящие запросы для проверки существующих выполняющихся дубликатов.
+     * @param req - The internal request object.
+     * @returns A shared promise if a duplicate exists, otherwise void to continue.
      */
     async onRequest(req: InternalRequest): Promise<HttpResponse<any> | void> {
       const inflightReq = req as InflightRequest;
@@ -97,11 +129,12 @@ export function withInflight(): HyperPlugin {
 
         if (signal) {
           return new Promise<HttpResponse<any>>((resolve, reject) => {
-            let clean = false;
+            let settled = false;
 
             const onAbort = () => {
-              if (clean) return;
-              clean = true;
+              if (settled) return;
+              settled = true;
+              signal.removeEventListener("abort", onAbort);
               reject(
                 new DOMException("The user aborted a request.", "AbortError"),
               );
@@ -109,26 +142,25 @@ export function withInflight(): HyperPlugin {
 
             signal.addEventListener("abort", onAbort);
 
-            existing.promise.then(
-              (res) => {
-                if (!clean) {
-                  clean = true;
+            existing.promise
+              .then((res) => {
+                if (!settled) {
+                  settled = true;
                   signal.removeEventListener("abort", onAbort);
-                  resolve(cloneResponse(res));
+                  resolve(safeClone(res));
                 }
-              },
-              (err) => {
-                if (!clean) {
-                  clean = true;
+              })
+              .catch((err) => {
+                if (!settled) {
+                  settled = true;
                   signal.removeEventListener("abort", onAbort);
                   reject(err);
                 }
-              },
-            );
+              });
           });
         }
 
-        return existing.promise.then(cloneResponse);
+        return existing.promise.then(safeClone);
       }
 
       let resolveFn!: (res: HttpResponse<any>) => void;
@@ -153,34 +185,34 @@ export function withInflight(): HyperPlugin {
     },
 
     /**
-     * @ru Обрабатывает успешный ответ мастер-запроса, рассылая результат всем ожидавщим дубликатам.
-     * @en Handles successful primary response, broadcasting the result to all awaiting duplicates.
+     * @en Intercepts successful responses to resolve the shared in-flight promise.
+     * @ru Перехватывает успешные ответы для разрешения общего обещания inflight.
+     * @param res - The HTTP response object.
+     * @param req - The original internal request object.
      */
-    onResponse(res: HttpResponse<any>, req: InternalRequest): void {
+    onResponse(res: HttpResponse<any>, req?: InternalRequest): void {
+      if (!req) return;
       const entry = primaryFlights.get(req);
-      if (entry !== undefined) {
+      if (entry) {
         entry.resolve(res);
         primaryFlights.delete(req);
-
-        if (inflight.get(entry.url) === entry) {
-          inflight.delete(entry.url);
-        }
+        if (inflight.get(entry.url) === entry) inflight.delete(entry.url);
       }
     },
 
     /**
-     * @ru Обрабатывает ошибку сети мастер-запроса, транслируя исключение во все заблокированные конвейеры.
-     * @en Handles primary network error, broadcasting the failure exception to all stalled pipelines.
+     * @en Intercepts errors to reject the shared in-flight promise.
+     * @ru Перехватывает ошибки для отклонения общего обещания inflight.
+     * @param err - The error object.
+     * @param req - The original internal request object.
      */
-    onError(err: HyperttpError, req: InternalRequest): void {
+    onError(err: HyperttpError, req?: InternalRequest): void {
+      if (!req) return;
       const entry = primaryFlights.get(req);
-      if (entry !== undefined) {
+      if (entry) {
         entry.reject(err);
         primaryFlights.delete(req);
-
-        if (inflight.get(entry.url) === entry) {
-          inflight.delete(entry.url);
-        }
+        if (inflight.get(entry.url) === entry) inflight.delete(entry.url);
       }
     },
   };
