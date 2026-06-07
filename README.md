@@ -38,7 +38,6 @@ npm install @hyperttp/inflight
 
 ```typescript
 import { HyperClient } from "@hyperttp/core";
-import "@hyperttp/inflight"; // Импорт для автоматического расширения типов
 
 const client = new HyperClient({
   verbose: true,

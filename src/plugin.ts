@@ -75,7 +75,7 @@ interface InflightEntry {
  * Предотвращает множественные одновременные запросы к одному URL, разделяя одно и то же обещание.
  * @returns The configured HyperPlugin instance.
  */
-export function withInflight(): HyperPlugin {
+export function withInflight(options?: { enabled?: boolean }): HyperPlugin {
   const inflight = new Map<string, InflightEntry>();
   const primaryFlights = new WeakMap<InternalRequest, InflightEntry>();
 
@@ -101,8 +101,10 @@ export function withInflight(): HyperPlugin {
      * @param config - The current client configuration.
      * @returns True if inflight deduplication is not explicitly disabled.
      */
-    enabled: (config: HttpClientOptions): boolean =>
-      config.inflight?.enabled !== false,
+    enabled: (config: HttpClientOptions): boolean => {
+      if (options?.enabled === false) return false;
+      return config.inflight?.enabled !== false;
+    },
 
     /**
      * @en Intercepts outgoing requests to check for existing in-flight duplicates.
