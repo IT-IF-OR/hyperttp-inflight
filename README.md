@@ -1,96 +1,48 @@
 # @hyperttp/inflight
 
-Плагин дедупликации (схлопывания) параллельных запросов для HTTP-клиента **Hyperttp**.
-Если приложение одновременно выполняет несколько одинаковых
-`GET`-запросов к одному и тому же эндпоинту, плагин объединяет их,
-выполняет только один сетевой запрос и
-распределяет единый результат между всеми вызывающими сторонами (Request Collapsing).
+> English | [Русский](https://github.com/IT-IF-OR/hyperttp-inflight/tree/main/lang/ru)
 
-## Особенности
+Request collapsing and de-duplication plugin for Hyperttp.
 
-- 🏎️ **Защита от "лавины" (Cache Stampede)**:
-Предотвращает перегрузку сервера идентичными конкурентными запросами.
-- 🎯 **Умное освобождение памяти**:
-Ссылка на промис хранится в `Map` ровно до тех пор,
-пока запрос находится в обработке, и автоматически удаляется через `finally`.
-- 🎛️ **Гибкое управление**:
-Поддержка флага `req.meta.skipInflight` для принудительного обхода дедупликации.
-- ⚡ **Нулевой оверхед**: Работает на фазе `PREPARE`,
-не создает лишних оберток и не требует внешних зависимостей.
+## Features
 
-## Установка
+- Deduplicates concurrent equivalent requests into one network request.
+- Shares the resulting response with all waiting callers.
+- Removes in-flight entries after completion or failure.
+- Runs in the Core v2 `PREPARE` phase with no external runtime dependencies.
+
+## Installation
 
 ```bash
-# С использованием bun
-bun add @hyperttp/inflight
-
-# С использованием npm/pnpm
 npm install @hyperttp/inflight
-
+# or
+bun add @hyperttp/inflight
 ```
 
-## Использование
+## Usage
 
-### Инициализация клиента
-
-Плагин по умолчанию включен (`enabled !== false`), если подключен к сборщику.
-При необходимости его можно явно сконфигурировать или отключить.
-
-```typescript
-import { HyperClient } from "@hyperttp/core";
+```ts
+import { HyperClient } from "hyperttp";
+import { withInflight } from "@hyperttp/inflight";
 
 const client = new HyperClient({
-  verbose: true,
-  inflight: {
-    enabled: true // Можно передать false, чтобы отключить плагин
-  }
+  plugins: [withInflight()],
 });
 
-// Запросы отправляются одновременно
-const [res1, res2, res3] = await Promise.all([
-  client.get("https://api.example.com/slow-endpoint"),
-  client.get("https://api.example.com/slow-endpoint"),
-  client.get("https://api.example.com/slow-endpoint")
+const [first, second] = await Promise.all([
+  client.get("https://api.example.com/data"),
+  client.get("https://api.example.com/data"),
 ]);
-
-// Вкладка Network покажет ровно ОДИН реальный HTTP-запрос.
-// Все три переменные получат один и тот же результат.
-
 ```
 
-### Обход дедупликации
+Both callers receive the result of a single request. Configure the plugin with the options
+provided by `InflightOptions`; set `enabled: false` to disable it.
 
-Если вам необходимо гарантированно отправить отдельный сетевой запрос,
-используйте свойство `meta` внутри конфигурации запроса:
+## Core v2
 
-```typescript
-const freshData = await client.get("https://api.example.com/slow-endpoint", {
-  meta: { skipInflight: true }
-});
+The plugin uses protocol-neutral `SendRequest`, `UniversalResponse`, and `RequestContext` values.
+Request data is read from protocol-specific `input` and `metadata`.
 
-```
-
-## Как это работает (Архитектура)
-
-Плагин перехватывает цепочку выполнения на фазе **`PREPARE`**:
-
-```mermaid
-graph TD
-    Req1[Запрос 1 к /api] --> Phase[PREPARE Phase]
-    Req2[Запрос 2 к /api] --> Phase
-    
-    Phase --> Check{Промис в Map?}
-    
-    Check -- Нет --> Exec[Выполнить сетевой запрос]
-    Exec --> Save[Сохранить промис в Map]
-    Save --> Return1[Возврат результата]
-    
-    Check -- Да --> Return2[Вернуть текущий активный промис]
-    
-    Exec -. Выполнение завершено .-> Delete[Удалить из Map через .finally]
-
-```
-
-## Лицензия
+## License
 
 MIT © dirold2

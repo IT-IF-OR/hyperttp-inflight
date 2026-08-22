@@ -5,7 +5,6 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    globalSetup: ["./tests/globalSetup.ts"],
     include: ["tests/**/*.test.ts"],
     coverage: {
       provider: "v8",
@@ -16,7 +15,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
 });
