@@ -1,37 +1,48 @@
-# dependencies (bun install)
-node_modules
+# Node.js
+node_modules/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+bun.lock
 
-# output
-out
-dist
-*.tgz
+# PNPM store
+.pnp/
+.pnpm-store/
+pnpm-lock.yaml
 
-# code coverage
-coverage
-*.lcov
+# Output directories
+dist/
+build/
 
-# logs
-logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
-
-# dotenv environment variable files
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
-
-# caches
-.eslintcache
-.cache
+# TypeScript
 *.tsbuildinfo
 
-# IntelliJ based IDEs
-.idea
+# Logs
+logs/
+*.log
 
-# Finder (MacOS) folder config
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Vitest / test coverage
+coverage/
+.vitest/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# MacOS
 .DS_Store
+
+# Linux
+*~
 
 # Serena
 .serena

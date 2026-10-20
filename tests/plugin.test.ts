@@ -44,6 +44,21 @@ describe("withInflight", () => {
     ).not.toBe(response.headers);
   });
 
+  it("does not deduplicate requests belonging to different auth identities", async () => {
+    const plugin = withInflight();
+    const firstContext = context();
+    const secondContext = context();
+    firstContext.state["@hyperttp/auth.identity"] = "user:one";
+    secondContext.state["@hyperttp/auth.identity"] = "user:two";
+
+    expect(
+      await plugin.onRequest?.(restRequest("https://example.test/me"), undefined, firstContext),
+    ).toBeUndefined();
+    expect(
+      await plugin.onRequest?.(restRequest("https://example.test/me"), undefined, secondContext),
+    ).toBeUndefined();
+  });
+
   it("keeps REST defaults for method, URL, metadata, and signals", async () => {
     const plugin = withInflight();
     const controller = new AbortController();

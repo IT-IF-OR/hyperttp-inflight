@@ -8,6 +8,8 @@ import type {
 
 type HttpInput = { method?: string; url?: string };
 
+const AUTH_IDENTITY_STATE_KEY = "@hyperttp/auth.identity";
+
 export type InflightKey = PropertyKey;
 
 export interface InflightOptions<TInput = unknown> {
@@ -41,8 +43,17 @@ function defaultShouldDedupe<TInput>(request: SendRequest<TInput>): boolean {
   return request.protocol === "rest" && httpInput(request).method === "GET";
 }
 
-function defaultKeyExtractor<TInput>(request: SendRequest<TInput>): InflightKey | undefined {
-  return request.protocol === "rest" ? httpInput(request).url : undefined;
+function defaultKeyExtractor<TInput>(
+  request: SendRequest<TInput>,
+  ctx?: RequestContext,
+): InflightKey | undefined {
+  if (request.protocol !== "rest") return;
+
+  const url = httpInput(request).url;
+  if (!url) return;
+
+  const identity = ctx?.state[AUTH_IDENTITY_STATE_KEY];
+  return identity === undefined ? url : JSON.stringify([url, identity]);
 }
 
 function abortError(): DOMException {
@@ -92,7 +103,7 @@ export function withInflight<TInput = unknown, TOutput = unknown>(
   const shouldDedupe: NonNullable<InflightOptions<TInput>["shouldDedupe"]> =
     options.shouldDedupe ?? ((request) => defaultShouldDedupe(request));
   const keyExtractor: NonNullable<InflightOptions<TInput>["keyExtractor"]> =
-    options.keyExtractor ?? ((request) => defaultKeyExtractor(request));
+    options.keyExtractor ?? ((request, ctx) => defaultKeyExtractor(request, ctx));
 
   const safeClone = (response: UniversalResponse<TOutput>): UniversalResponse<TOutput> => ({
     ...response,

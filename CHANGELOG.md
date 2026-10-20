@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.2] - 2026-10-20
+
+### Fixed
+
+- Partitioned default REST inflight-deduplication keys by the non-secret `@hyperttp/auth.identity` request state.
+- Forwarded `RequestContext` to the default key extractor so request-scoped identity is available when forming the key.
+- Updated the `@hyperttp/types` peer and development dependency to `^0.4.2`.
+
 ## [2.0.0] - 2026-08-22
 
 ### Changed
