@@ -1,6 +1,6 @@
 {
   "name": "@hyperttp/inflight",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Request collapsing and de-duplication plugin for Hyperttp client",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,8 +32,8 @@
     "@types/node": "latest",
     "typescript": "^7.0.2",
     "vitest": "latest",
-    "oxfmt": "^0.74.0",
-    "oxlint": "^1.89.0",
+    "oxfmt": "^0.75.0",
+    "oxlint": "^1.90.0",
     "esbuild": "^0.28.2"
   },
   "scripts": {

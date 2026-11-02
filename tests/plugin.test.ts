@@ -25,6 +25,33 @@ const response: UniversalResponse<{ value: number }> = {
 };
 
 describe("withInflight", () => {
+  it("handles a failed primary without followers and releases its key", async () => {
+    const plugin = withInflight();
+    const primary = restRequest("/timeout");
+    const timeout = new DOMException("The operation timed out.", "TimeoutError");
+    await plugin.onRequest?.(primary);
+    plugin.onError?.(timeout, primary);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(await plugin.onRequest?.(restRequest("/timeout"))).toBeUndefined();
+  });
+
+  it("preserves the original rejection for all followers", async () => {
+    const plugin = withInflight();
+    const primary = restRequest("/failure");
+    await plugin.onRequest?.(primary);
+    const followers = [
+      plugin.onRequest?.(restRequest("/failure")),
+      plugin.onRequest?.(restRequest("/failure")),
+    ];
+    const settled = Promise.allSettled(followers);
+    const error = new Error("request failed");
+    plugin.onError?.(error, primary);
+    expect(await settled).toEqual([
+      { status: "rejected", reason: error },
+      { status: "rejected", reason: error },
+    ]);
+  });
+
   it("deduplicates REST GET requests by URL by default", async () => {
     const plugin = withInflight<unknown, { value: number }>();
     const primary = restRequest("https://example.test/items");

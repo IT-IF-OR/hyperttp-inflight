@@ -136,6 +136,9 @@ export function withInflight<TInput = unknown, TOutput = unknown>(
         resolve = resolvePromise;
         reject = rejectPromise;
       });
+      // The primary request may fail without any duplicate awaiting this promise.
+      // Observe rejection without replacing the original promise used by followers.
+      void promise.catch(() => {});
       const entry = { promise, resolve, reject, key };
       inflight.set(key, entry);
       primaryFlights.set(request, entry);
