@@ -43,6 +43,22 @@ provided by `InflightOptions`; set `enabled: false` to disable it.
 The plugin uses protocol-neutral `SendRequest`, `UniversalResponse`, and `RequestContext` values.
 Request data is read from protocol-specific `input` and `metadata`.
 
+## Authentication and safe keys
+
+All keys, including custom `keyExtractor` results, are isolated by the non-secret
+`RequestContext.state["@hyperttp/auth.identity"]` value. Run authentication before
+inflight deduplication and provide a stable, non-secret identity for authenticated
+requests. Requests without an identity share the anonymous partition. Identity is
+compared directly, not serialized; use a stable string identity across requests.
+
+The default key is the REST URL. Headers and bodies are not serialized, but a URL
+can itself contain credentials (query API keys or URL userinfo). For those requests,
+provide a custom `keyExtractor` returning a credential-free resource key, retaining
+all non-secret parameters that affect the response. Return `undefined` or use
+`metadata.skipInflight: true` when a safe key cannot be formed. Never put tokens,
+passwords, API keys, or serialized request objects into custom keys. Authentication
+identity isolation is applied automatically to custom keys as well.
+
 ## License
 
 MIT © dirold2

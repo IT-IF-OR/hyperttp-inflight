@@ -24,6 +24,7 @@ interface InflightEntry<TOutput> {
   resolve: (response: UniversalResponse<TOutput>) => void;
   reject: (error: unknown) => void;
   key: InflightKey;
+  identity: unknown;
 }
 
 function httpInput<TInput>(request: SendRequest<TInput>): HttpInput {
@@ -43,17 +44,13 @@ function defaultShouldDedupe<TInput>(request: SendRequest<TInput>): boolean {
   return request.protocol === "rest" && httpInput(request).method === "GET";
 }
 
-function defaultKeyExtractor<TInput>(
-  request: SendRequest<TInput>,
-  ctx?: RequestContext,
-): InflightKey | undefined {
+function defaultKeyExtractor<TInput>(request: SendRequest<TInput>): InflightKey | undefined {
   if (request.protocol !== "rest") return;
 
   const url = httpInput(request).url;
   if (!url) return;
 
-  const identity = ctx?.state[AUTH_IDENTITY_STATE_KEY];
-  return identity === undefined ? url : JSON.stringify([url, identity]);
+  return url;
 }
 
 function abortError(): DOMException {
@@ -98,12 +95,12 @@ declare module "@hyperttp/types" {
 export function withInflight<TInput = unknown, TOutput = unknown>(
   options: InflightOptions<TInput> = {},
 ): HyperPlugin<TInput, TOutput> {
-  const inflight = new Map<InflightKey, InflightEntry<TOutput>>();
+  const inflight = new Map<unknown, Map<InflightKey, InflightEntry<TOutput>>>();
   const primaryFlights = new WeakMap<SendRequest<TInput>, InflightEntry<TOutput>>();
   const shouldDedupe: NonNullable<InflightOptions<TInput>["shouldDedupe"]> =
     options.shouldDedupe ?? ((request) => defaultShouldDedupe(request));
   const keyExtractor: NonNullable<InflightOptions<TInput>["keyExtractor"]> =
-    options.keyExtractor ?? ((request, ctx) => defaultKeyExtractor(request, ctx));
+    options.keyExtractor ?? ((request) => defaultKeyExtractor(request));
 
   const safeClone = (response: UniversalResponse<TOutput>): UniversalResponse<TOutput> => ({
     ...response,
@@ -127,7 +124,9 @@ export function withInflight<TInput = unknown, TOutput = unknown>(
       const key = keyExtractor(request, requestCtx);
       if (key === undefined) return;
 
-      const existing = inflight.get(key);
+      const identity = requestCtx?.state[AUTH_IDENTITY_STATE_KEY];
+      let flights = inflight.get(identity);
+      const existing = flights?.get(key);
       if (existing) return waitForEntry(existing, signal, safeClone);
 
       let resolve!: (response: UniversalResponse<TOutput>) => void;
@@ -139,8 +138,12 @@ export function withInflight<TInput = unknown, TOutput = unknown>(
       // The primary request may fail without any duplicate awaiting this promise.
       // Observe rejection without replacing the original promise used by followers.
       void promise.catch(() => {});
-      const entry = { promise, resolve, reject, key };
-      inflight.set(key, entry);
+      const entry = { promise, resolve, reject, key, identity };
+      if (!flights) {
+        flights = new Map();
+        inflight.set(identity, flights);
+      }
+      flights.set(key, entry);
       primaryFlights.set(request, entry);
     },
     onResponse(response, request): void {
@@ -148,14 +151,18 @@ export function withInflight<TInput = unknown, TOutput = unknown>(
       if (!entry) return;
       entry.resolve(response);
       primaryFlights.delete(request);
-      if (inflight.get(entry.key) === entry) inflight.delete(entry.key);
+      const flights = inflight.get(entry.identity);
+      if (flights?.get(entry.key) === entry) flights.delete(entry.key);
+      if (flights?.size === 0) inflight.delete(entry.identity);
     },
     onError(error, request): void {
       const entry = request && primaryFlights.get(request);
       if (!entry) return;
       entry.reject(error);
       primaryFlights.delete(request);
-      if (inflight.get(entry.key) === entry) inflight.delete(entry.key);
+      const flights = inflight.get(entry.identity);
+      if (flights?.get(entry.key) === entry) flights.delete(entry.key);
+      if (flights?.size === 0) inflight.delete(entry.identity);
     },
   };
 }

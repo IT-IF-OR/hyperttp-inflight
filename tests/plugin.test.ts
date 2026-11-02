@@ -86,6 +86,40 @@ describe("withInflight", () => {
     ).toBeUndefined();
   });
 
+  it.each([undefined, () => "shared-key"])(
+    "partitions default and custom keys by auth identity (%s)",
+    async (keyExtractor) => {
+      const plugin = withInflight({ keyExtractor });
+      const primary = restRequest("/me");
+      const authenticated = context();
+      authenticated.state["@hyperttp/auth.identity"] = "user:one";
+      await plugin.onRequest?.(primary, undefined, authenticated);
+
+      expect(await plugin.onRequest?.(restRequest("/me"), undefined, context())).toBeUndefined();
+      const sameIdentity = context();
+      sameIdentity.state["@hyperttp/auth.identity"] = "user:one";
+      const duplicate = plugin.onRequest?.(restRequest("/me"), undefined, sameIdentity);
+      plugin.onResponse?.(response, primary);
+      await expect(duplicate).resolves.toEqual(response);
+      expect(await plugin.onRequest?.(restRequest("/me"), undefined, sameIdentity)).toBeUndefined();
+    },
+  );
+
+  it("does not serialize credentials or identity when partitioning custom keys", async () => {
+    const plugin = withInflight({ keyExtractor: () => "safe-resource-key" });
+    const requestCtx = context();
+    requestCtx.state["@hyperttp/auth.identity"] = {
+      toJSON() {
+        throw new Error("Identity must not be serialized");
+      },
+    };
+    const primary = restRequest("/me?api_key=secret");
+    await expect(plugin.onRequest?.(primary, undefined, requestCtx)).resolves.toBeUndefined();
+    const duplicate = plugin.onRequest?.(restRequest("/me?api_key=rotated"), undefined, requestCtx);
+    plugin.onResponse?.(response, primary);
+    await expect(duplicate).resolves.toEqual(response);
+  });
+
   it("keeps REST defaults for method, URL, metadata, and signals", async () => {
     const plugin = withInflight();
     const controller = new AbortController();

@@ -1,10 +1,21 @@
 # Changelog
 
+## [2.0.4] - 2026-11-02
+
+### Fixed
+
+- Partitioned all inflight keys, including custom extractors, by non-secret authentication identity without serializing identity or request credentials.
+
+### Documentation
+
+- Documented safe custom keys for URLs containing query credentials and the requirement to disable deduplication when a safe key cannot be formed.
+
 ## [2.0.3] - 2026-11-02
 
 ### Fixed
 
 - **Critical:** Fixed default REST inflight deduplication sharing requests across identities by partitioning keys by the non-secret `@hyperttp/auth.identity` request state.
+
 
 ## [2.0.2] - 2026-10-20
 
