@@ -1,6 +1,6 @@
 {
   "name": "@hyperttp/inflight",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Request collapsing and de-duplication plugin for Hyperttp client",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.0.1] - 2026-11-03
+
+- Require `@hyperttp/types@^0.5.0` and validate against the registry declarations.
+- Use shared RequestContext/RequestOutcome contracts instead of local settlement interface duplicates.
+
 ## [3.0.0] - 2026-11-03
 
 ### Changed

@@ -2,6 +2,7 @@ import type {
   HyperClientOptions,
   HyperPlugin,
   RequestContext,
+  RequestOutcome,
   SendRequest,
   UniversalResponse,
 } from "@hyperttp/types";
@@ -17,13 +18,6 @@ export interface InflightOptions<TInput = unknown> {
   shouldDedupe?: (request: SendRequest<TInput>, ctx?: RequestContext) => boolean;
   keyExtractor?: (request: SendRequest<TInput>, ctx?: RequestContext) => InflightKey | undefined;
   allowAbortSignal?: boolean;
-}
-
-type SettledOutcome = { ok: true; response: UniversalResponse } | { ok: false; error: unknown };
-
-interface LifecycleContext extends RequestContext {
-  onSettled?: (callback: (outcome: SettledOutcome) => void) => void;
-  acceptFinalResponse?: <T>(response: UniversalResponse<T>) => UniversalResponse<T>;
 }
 
 interface InflightEntry<TOutput> {
@@ -107,7 +101,7 @@ export function withInflight<TInput = unknown, TOutput = unknown>(
   const primaryFlights = new WeakMap<object, InflightEntry<TOutput>>();
   // Older callers may omit the context when invoking response/error hooks.
   const legacyKeys = new WeakMap<object, object>();
-  const settle = (key: object, entry: InflightEntry<TOutput>, outcome: SettledOutcome): void => {
+  const settle = (key: object, entry: InflightEntry<TOutput>, outcome: RequestOutcome): void => {
     if (primaryFlights.get(key) !== entry) return;
     if (outcome.ok) entry.resolve(outcome.response as UniversalResponse<TOutput>);
     else entry.reject(outcome.error);
@@ -161,7 +155,7 @@ export function withInflight<TInput = unknown, TOutput = unknown>(
 
       let flights = inflight.get(identity);
       const existing = flights?.get(key);
-      const lifecycleCtx: LifecycleContext | undefined = requestCtx;
+      const lifecycleCtx = requestCtx;
       if (existing) {
         return waitForEntry(existing, signal, (response) => {
           const cloned = safeClone(response);
