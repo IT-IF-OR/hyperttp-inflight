@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.0.5] - 2026-11-02
+
+### Fixed
+
+- Bypassed inflight deduplication for requests marked by `@hyperttp/auth.applied` or carrying recognized authentication headers unless a non-empty string authentication identity is available, including when using custom keys.
+- Required an explicit credential-free `keyExtractor` for requests with authentication or auth identity instead of using potentially credential-bearing default URL keys.
+- Skipped deduplication when request headers cannot be safely parsed.
+
+### Documentation
+
+- Documented conservative authentication defaults, auth-before-inflight ordering, and limitations when detecting manually supplied query or nonstandard header credentials.
+
 ## [2.0.4] - 2026-11-02
 
 ### Fixed

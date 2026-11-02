@@ -25,6 +25,48 @@ const response: UniversalResponse<{ value: number }> = {
 };
 
 describe("withInflight", () => {
+  it.each([false, true])(
+    "bypasses authenticated requests without identity (custom key: %s)",
+    async (custom) => {
+      const keyExtractor = vi.fn(() => "safe-path");
+      const plugin = withInflight(custom ? { keyExtractor } : {});
+      const ctx = context();
+      ctx.state["@hyperttp/auth.applied"] = true;
+      for (let i = 0; i < 2; i++) {
+        expect(await plugin.onRequest?.(restRequest("/me"), undefined, ctx)).toBeUndefined();
+      }
+      expect(keyExtractor).not.toHaveBeenCalled();
+    },
+  );
+
+  it("bypasses default URL keys when authenticated identity is present", async () => {
+    const plugin = withInflight();
+    const ctx = context();
+    ctx.state["@hyperttp/auth.identity"] = "user:one";
+    ctx.state["@hyperttp/auth.applied"] = true;
+    for (let i = 0; i < 2; i++) {
+      expect(
+        await plugin.onRequest?.(restRequest("/me?key=synthetic-secret"), undefined, ctx),
+      ).toBeUndefined();
+    }
+  });
+
+  it("bypasses manually supplied authorization headers without identity", async () => {
+    const plugin = withInflight();
+    for (let i = 0; i < 2; i++) {
+      expect(
+        await plugin.onRequest?.({
+          ...restRequest("/me"),
+          input: {
+            method: "GET",
+            url: "/me",
+            headers: { authorization: "Bearer synthetic-secret" },
+          },
+        }),
+      ).toBeUndefined();
+    }
+  });
+
   it("handles a failed primary without followers and releases its key", async () => {
     const plugin = withInflight();
     const primary = restRequest("/timeout");
@@ -86,8 +128,8 @@ describe("withInflight", () => {
     ).toBeUndefined();
   });
 
-  it.each([undefined, () => "shared-key"])(
-    "partitions default and custom keys by auth identity (%s)",
+  it.each([() => "shared-key"])(
+    "partitions explicit safe keys by auth identity (%s)",
     async (keyExtractor) => {
       const plugin = withInflight({ keyExtractor });
       const primary = restRequest("/me");

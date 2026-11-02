@@ -121,10 +121,25 @@ export function withInflight<TInput = unknown, TOutput = unknown>(
       if (signal && !options.allowAbortSignal) return;
       if (!shouldDedupe(request, requestCtx)) return;
 
+      const identity = requestCtx?.state[AUTH_IDENTITY_STATE_KEY];
+      let authenticated = requestCtx?.state["@hyperttp/auth.applied"] === true;
+      try {
+        const input = request.input as { headers?: HeadersInit } | null;
+        const headers = new Headers(input?.headers);
+        authenticated ||= ["authorization", "proxy-authorization", "cookie", "x-api-key"].some(
+          (name) => headers.has(name),
+        );
+      } catch {
+        // Unknown header representations cannot safely participate in deduplication.
+        return;
+      }
+      if (authenticated && (typeof identity !== "string" || !identity)) return;
+      // Default URL keys may contain query credentials. Auth requires an explicit safe key.
+      if ((authenticated || identity !== undefined) && !options.keyExtractor) return;
+
       const key = keyExtractor(request, requestCtx);
       if (key === undefined) return;
 
-      const identity = requestCtx?.state[AUTH_IDENTITY_STATE_KEY];
       let flights = inflight.get(identity);
       const existing = flights?.get(key);
       if (existing) return waitForEntry(existing, signal, safeClone);

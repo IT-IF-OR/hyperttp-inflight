@@ -62,3 +62,14 @@ identity isolation is applied automatically to custom keys as well.
 ## License
 
 MIT © dirold2
+
+### Conservative authentication defaults
+
+`@hyperttp/auth` marks participating requests with the non-secret
+`RequestContext.state["@hyperttp/auth.applied"]` boolean, including custom adapters.
+Register auth before cache/inflight. Authenticated requests bypass default cache
+and inflight keys. To opt in, supply a credential-free key and a stable non-secret
+identity; cache and inflight refuse requests marked by auth without identity
+even with a custom key. Do not return credentials from key callbacks. Manually supplied query
+or nonstandard header credentials cannot be detected universally: disable these
+plugins or configure safe scoped keys explicitly.
