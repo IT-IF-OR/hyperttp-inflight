@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.0.0] - 2026-11-03
+
+### Changed
+
+- **Breaking:** Updated the `@hyperttp/types` peer and development dependency to `^0.5.0`.
+- Integrated optional `RequestContext.onSettled` to keep primary flights registered until final success or failure, including response transformations and cancellation.
+- Followers now receive shallow response/header clones of the final result and use optional `acceptFinalResponse` to avoid applying response transformations twice.
+
+### Fixed
+
+- Tracked primary flights by stable request context so replacing a request does not lose its inflight entry.
+- Prevented intermediate response/error hooks from settling flights when final lifecycle settlement is available.
+
+### Documentation
+
+- Documented final lifecycle integration and legacy fallback to response/error hooks when `onSettled` is unavailable; without `acceptFinalResponse`, followers retain the previous response pipeline behavior.
+
 ## [2.0.5] - 2026-11-02
 
 ### Fixed

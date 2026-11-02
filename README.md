@@ -59,6 +59,17 @@ all non-secret parameters that affect the response. Return `undefined` or use
 passwords, API keys, or serialized request objects into custom keys. Authentication
 identity isolation is applied automatically to custom keys as well.
 
+## Final lifecycle compatibility
+
+When Core provides optional `RequestContext.onSettled`, a primary flight remains
+registered until final success or failure, including response transformations and
+cancellation. Intermediate `onResponse`/`onError` hooks do not settle that flight.
+The stable request context identifies the primary even if Core replaces the request.
+Followers receive a shallow response/header clone of the final result and use
+optional `acceptFinalResponse` to avoid applying response transformations twice.
+On older Core versions, completion falls back to response/error hooks; without
+`acceptFinalResponse`, followers retain the older response pipeline behavior.
+
 ## License
 
 MIT © dirold2

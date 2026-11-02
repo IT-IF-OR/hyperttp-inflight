@@ -242,3 +242,91 @@ describe("withInflight", () => {
     expect(await plugin.onRequest?.(restRequest("/failure"))).toBeUndefined();
   });
 });
+
+type Outcome = { ok: true; response: UniversalResponse } | { ok: false; error: unknown };
+
+function lifecycleContext() {
+  const callbacks: Array<(outcome: Outcome) => void> = [];
+  const ctx = {
+    ...context(),
+    onSettled: vi.fn((callback: (outcome: Outcome) => void) => callbacks.push(callback)),
+    acceptFinalResponse: vi.fn(<T>(result: UniversalResponse<T>) => result),
+  };
+  return { ctx, settle: (outcome: Outcome) => callbacks.forEach((callback) => callback(outcome)) };
+}
+
+describe("inflight settlement lifecycle", () => {
+  it("shares only the final response and marks followers to skip repeated transformations", async () => {
+    const plugin = withInflight();
+    const primary = lifecycleContext();
+    const follower = lifecycleContext();
+    await plugin.onRequest?.(restRequest("/final"), undefined, primary.ctx);
+    let completed = false;
+    const waiting = Promise.resolve(
+      plugin.onRequest?.(restRequest("/final"), undefined, follower.ctx),
+    ).then((result) => {
+      completed = true;
+      return result;
+    });
+    expect(primary.ctx.onSettled).toHaveBeenCalledTimes(1);
+    expect(follower.ctx.onSettled).not.toHaveBeenCalled();
+    // Core may replace the request object while retaining its lifecycle context.
+    plugin.onResponse?.(response, restRequest("/final"), undefined, primary.ctx);
+    plugin.onError?.(new Error("intermediate"), restRequest("/final"), undefined, primary.ctx);
+    await Promise.resolve();
+    expect(completed).toBe(false);
+    const final = { ...response, data: { value: 42 } };
+    primary.settle({ ok: true, response: final });
+    const result = await waiting;
+    expect(result).toEqual(final);
+    expect(result).not.toBe(final);
+    expect(follower.ctx.acceptFinalResponse).toHaveBeenCalledExactlyOnceWith(result);
+    expect(
+      await plugin.onRequest?.(restRequest("/final"), undefined, lifecycleContext().ctx),
+    ).toBeUndefined();
+    primary.settle({ ok: false, error: new Error("duplicate settlement") });
+  });
+
+  it.each(["transport", "transform", "abort"])(
+    "shares final %s failures and frees the key",
+    async (kind) => {
+      const plugin = withInflight();
+      const primary = lifecycleContext();
+      await plugin.onRequest?.(restRequest("/failure"), undefined, primary.ctx);
+      const follower = lifecycleContext();
+      const waiting = plugin.onRequest?.(restRequest("/failure"), undefined, follower.ctx);
+      const error = kind === "abort" ? new DOMException("aborted", "AbortError") : new Error(kind);
+      const rejected = expect(waiting).rejects.toBe(error);
+      plugin.onResponse?.(response, restRequest("/failure"), undefined, primary.ctx);
+      primary.settle({ ok: false, error });
+      await rejected;
+      expect(follower.ctx.acceptFinalResponse).not.toHaveBeenCalled();
+      expect(
+        await plugin.onRequest?.(restRequest("/failure"), undefined, lifecycleContext().ctx),
+      ).toBeUndefined();
+    },
+  );
+
+  it("uses a stable context for legacy hooks after request replacement", async () => {
+    const plugin = withInflight();
+    const ctx = context();
+    await plugin.onRequest?.(restRequest("/replace"), undefined, ctx);
+    const waiting = plugin.onRequest?.(restRequest("/replace"));
+    plugin.onResponse?.(response, restRequest("/replace"), undefined, ctx);
+    await expect(waiting).resolves.toEqual(response);
+  });
+
+  it("allows followers without acceptFinalResponse and observes unshared final failures", async () => {
+    const plugin = withInflight();
+    const primary = lifecycleContext();
+    await plugin.onRequest?.(restRequest("/mixed"), undefined, primary.ctx);
+    const waiting = plugin.onRequest?.(restRequest("/mixed"), undefined, context());
+    primary.settle({ ok: true, response });
+    await expect(waiting).resolves.toEqual(response);
+    const failed = lifecycleContext();
+    await plugin.onRequest?.(restRequest("/mixed"), undefined, failed.ctx);
+    failed.settle({ ok: false, error: new Error("no followers") });
+    await Promise.resolve();
+    expect(await plugin.onRequest?.(restRequest("/mixed"))).toBeUndefined();
+  });
+});
