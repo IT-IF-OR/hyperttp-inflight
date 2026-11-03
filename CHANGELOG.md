@@ -50,7 +50,6 @@
 
 - **Critical:** Fixed default REST inflight deduplication sharing requests across identities by partitioning keys by the non-secret `@hyperttp/auth.identity` request state.
 
-
 ## [2.0.2] - 2026-10-20
 
 ### Fixed
