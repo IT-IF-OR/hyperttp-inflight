@@ -1,7 +1,13 @@
 {
   "name": "@hyperttp/inflight",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "Request collapsing and de-duplication plugin for Hyperttp client",
+  "license": "MIT",
+  "author": "dirold2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IT-IF-OR/hyperttp-inflight.git"
+  },
   "type": "module",
   "main": "./index.js",
   "types": "./index.d.ts",
@@ -13,14 +19,8 @@
     },
     "./package.json": "./package.json"
   },
-  "author": "dirold2",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/IT-IF-OR/hyperttp-inflight.git"
-  },
   "peerDependencies": {
-    "@hyperttp/types": "^0.5.0"
+    "@hyperttp/types": "^0.5.3"
   },
-  "private": false
+  "private": true
 }

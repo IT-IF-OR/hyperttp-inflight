@@ -2,6 +2,6 @@
   "version": 3,
   "sources": ["../src/index.ts"],
   "sourcesContent": ["export { withInflight } from \"./plugin.js\";\nexport type { InflightKey, InflightOptions } from \"./plugin.js\";\n"],
-  "mappings": "aAAA,OAAS,iBAAoB",
-  "names": []
+  "mappings": "AAAA,OAAS,gBAAAA,MAAoB",
+  "names": ["withInflight"]
 }
