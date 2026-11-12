@@ -1,6 +1,6 @@
 {
   "name": "@hyperttp/inflight",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "Request collapsing and de-duplication plugin for Hyperttp client",
   "license": "MIT",
   "author": "dirold2",
@@ -30,20 +30,23 @@
     "format:check": "oxfmt src tests vitest.config.ts --check",
     "test": "vitest run",
     "dev": "tsx src/index.ts",
-    "build": "node ../../scripts/build-package.ts",
+    "pub": "d-publish",
+    "dist": "d-dist",
+    "build": "tsc && esbuild \"dist/**/*.js\" --outdir=dist --allow-overwrite --minify --sourcemap && d-build",
     "clean": "node --input-type=module -e 'import { rmSync } from \"node:fs\"; rmSync(\"dist\", { recursive: true, force: true });'"
   },
   "devDependencies": {
-    "@hyperttp/types": "^0.5.3",
+    "@dirold2/dev-tools": "^1.1.3",
+    "@hyperttp/types": "^0.5.4",
     "@types/bun": "^1.4.4",
     "@types/node": "^26.6.6",
     "esbuild": "^0.28.2",
-    "oxfmt": "^0.76.0",
-    "oxlint": "^1.90.0",
+    "oxfmt": "^0.78.0",
+    "oxlint": "^1.93.0",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
   },
   "peerDependencies": {
-    "@hyperttp/types": "^0.5.3"
+    "@hyperttp/types": "^0.5.4"
   }
 }
